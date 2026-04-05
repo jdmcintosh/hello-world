@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Zordle</title>
+  <title>Zvordle</title>
   <style>
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     :root {
@@ -90,7 +90,7 @@
 </head>
 <body>
   <div id="toast"></div>
-  <header><h1>Zordle</h1></header>
+  <header><h1>Zvordle</h1></header>
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="game">Play</button>
     <button class="tab-btn" data-tab="vocab">My Vocabulary</button>
@@ -216,7 +216,7 @@
     {word:'BLUNT', ipa:'/blʌnt/', phonetic:'BLUNT', example:'Her blunt feedback, though hard to hear, was exactly what the team needed.'}
   ];
 
-  const SV = 'zordle_vocab', SS = 'zordle_state';
+  const SV = 'zvordle_vocab', SS = 'zvordle_state';
   const MAX = 6, LEN = 5;
   const PRI = {correct:3, present:2, absent:1, unused:0};
   let target, guesses=[], current='', over=false, keyStates={}, shareGrid=[];
@@ -328,7 +328,7 @@
 
   function shareText(){
     const won=guesses[guesses.length-1]===target.word;
-    return ['Zordle '+(won?guesses.length:'X')+'/'+MAX,'', ...shareGrid].join('
+    return ['Zvordle '+(won?guesses.length:'X')+'/'+MAX,'', ...shareGrid].join('
 ');
   }
 
