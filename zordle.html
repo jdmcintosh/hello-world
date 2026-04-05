@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zordle</title>
+  <style>
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+    :root {
+      --bg:#fff; --surface:#fff; --border:#d3d6da; --text:#1a1a1b;
+      --subtext:#787c7e; --correct:#6aaa64; --present:#c9b458; --absent:#787c7e;
+      --key-bg:#d3d6da; --key-text:#1a1a1b; --hborder:#e0e0e0;
+      --rbg:#f7f7f7; --cbg:#f7f7f7; --cborder:#e0e0e0;
+    }
+    @media (prefers-color-scheme:dark) {
+      :root {
+        --bg:#121213; --surface:#1a1a1b; --border:#3a3a3c; --text:#fff;
+        --subtext:#818384; --correct:#538d4e; --present:#b59f3b; --absent:#3a3a3c;
+        --key-bg:#818384; --key-text:#fff; --hborder:#3a3a3c;
+        --rbg:#1a1a1b; --cbg:#1a1a1b; --cborder:#3a3a3c;
+      }
+    }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; display:flex; flex-direction:column; align-items:center; min-height:100vh; }
+    header { width:100%; max-width:500px; display:flex; justify-content:center; padding:12px 16px; border-bottom:1px solid var(--hborder); margin-bottom:8px; }
+    header h1 { font-size:2rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+    .tab-bar { display:flex; border-bottom:2px solid var(--border); width:100%; max-width:500px; margin-bottom:16px; }
+    .tab-btn { flex:1; padding:10px; background:none; border:none; border-bottom:3px solid transparent; margin-bottom:-2px; cursor:pointer; font-size:.875rem; font-weight:600; color:var(--subtext); text-transform:uppercase; letter-spacing:.05em; transition:color .15s,border-color .15s; }
+    .tab-btn.active { color:var(--text); border-bottom-color:var(--text); }
+    .tab-panel { display:none; width:100%; max-width:500px; }
+    .tab-panel.active { display:flex; flex-direction:column; align-items:center; }
+    #board { display:grid; grid-template-rows:repeat(6,1fr); gap:5px; margin-bottom:20px; }
+    .row { display:grid; grid-template-columns:repeat(5,1fr); gap:5px; }
+    .tile { width:62px; height:62px; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:2rem; font-weight:700; text-transform:uppercase; color:var(--text); background:var(--surface); user-select:none; position:relative; }
+    .tile[data-letter] { border-color:#878a8c; }
+    .tile[data-state=correct]  { background:var(--correct); color:#fff; border-color:var(--correct); }
+    .tile[data-state=present]  { background:var(--present); color:#fff; border-color:var(--present); }
+    .tile[data-state=absent]   { background:var(--absent);  color:#fff; border-color:var(--absent); }
+    .tile.pop { animation:pop .1s ease-in-out; }
+    @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.12)} 100%{transform:scale(1)} }
+    .tile.flip { animation:flip .5s ease forwards; animation-delay:calc(var(--col,0)*.15s); }
+    @keyframes flip { 0%{transform:rotateX(0)} 49%{transform:rotateX(-90deg)} 50%{transform:rotateX(-90deg)} 100%{transform:rotateX(0)} }
+    .row.shake { animation:shake .4s ease; }
+    @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(4px)} }
+    .tile.bounce { animation:tbounce .5s ease forwards; animation-delay:calc(var(--col,0)*.08s); }
+    @keyframes tbounce { 0%{transform:translateY(0)} 40%{transform:translateY(-20px)} 70%{transform:translateY(-8px)} 85%{transform:translateY(-14px)} 100%{transform:translateY(0)} }
+    #toast { position:fixed; top:80px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:10px 18px; border-radius:6px; font-size:.875rem; font-weight:600; pointer-events:none; opacity:0; transition:opacity .2s; z-index:100; white-space:nowrap; }
+    #toast.show { opacity:1; }
+    #keyboard { display:flex; flex-direction:column; align-items:center; gap:6px; width:100%; padding:0 8px; max-width:500px; }
+    .kb-row { display:flex; gap:5px; justify-content:center; }
+    .key { height:58px; min-width:43px; padding:0 4px; border:none; border-radius:4px; background:var(--key-bg); color:var(--key-text); font-size:.8rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; user-select:none; transition:background .2s,color .2s; -webkit-tap-highlight-color:transparent; }
+    .key.wide { min-width:65px; font-size:.72rem; }
+    .key[data-state=correct] { background:var(--correct); color:#fff; }
+    .key[data-state=present] { background:var(--present); color:#fff; }
+    .key[data-state=absent]  { background:var(--absent);  color:#fff; }
+    #result-panel { display:none; flex-direction:column; align-items:center; gap:12px; width:calc(100% - 32px); max-width:468px; background:var(--rbg); border:1px solid var(--border); border-radius:12px; padding:20px 24px; margin:20px 0; text-align:center; }
+    #result-panel.show { display:flex; }
+    #result-message { font-size:1rem; font-weight:600; color:var(--subtext); }
+    #result-word { font-size:2.5rem; font-weight:800; letter-spacing:.15em; }
+    .result-ipa { font-size:1.1rem; color:var(--subtext); display:block; }
+    .result-phonetic { font-size:.85rem; color:var(--subtext); letter-spacing:.05em; display:block; margin-top:2px; }
+    #result-example { font-size:.95rem; font-style:italic; line-height:1.5; }
+    .result-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:4px; }
+    .btn { padding:10px 20px; border-radius:6px; border:none; font-size:.875rem; font-weight:700; cursor:pointer; text-transform:uppercase; letter-spacing:.05em; }
+    .btn:hover { opacity:.85; }
+    .btn-primary   { background:var(--correct); color:#fff; }
+    .btn-secondary { background:var(--key-bg); color:var(--key-text); }
+    .btn-share     { background:#1d9bf0; color:#fff; }
+    #tab-vocab { padding:0 16px 40px; }
+    .vocab-header { display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:16px; }
+    .vocab-header h2 { font-size:1.1rem; font-weight:700; }
+    .btn-danger { background:none; border:1px solid #cc0033; color:#cc0033; font-size:.75rem; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:600; }
+    .btn-danger:hover { background:#cc0033; color:#fff; }
+    #vocab-list { width:100%; display:flex; flex-direction:column; gap:12px; }
+    .flashcard { background:var(--cbg); border:1px solid var(--cborder); border-radius:10px; padding:16px 18px; display:grid; grid-template-columns:auto 1fr; column-gap:16px; row-gap:6px; }
+    .fc-word { font-size:1.8rem; font-weight:800; letter-spacing:.1em; grid-column:1; grid-row:1/3; align-self:center; color:var(--correct); }
+    .fc-pron { grid-column:2; grid-row:1; }
+    .fc-ipa { font-size:.95rem; color:var(--subtext); }
+    .fc-phonetic { font-size:.8rem; color:var(--subtext); display:block; }
+    .fc-example { grid-column:1/-1; font-size:.9rem; font-style:italic; line-height:1.5; border-top:1px solid var(--cborder); padding-top:10px; margin-top:4px; }
+    .fc-date { grid-column:1/-1; font-size:.75rem; color:var(--subtext); }
+    .empty-state { color:var(--subtext); text-align:center; padding:40px 0; font-size:.95rem; line-height:1.6; }
+    @media (max-width:500px) {
+      header h1 { font-size:1.5rem; }
+      .tile { width:52px; height:52px; font-size:1.6rem; }
+      .key { height:50px; min-width:32px; font-size:.7rem; }
+      .key.wide { min-width:48px; font-size:.62rem; }
+      #result-word { font-size:2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="toast"></div>
+  <header><h1>Zordle</h1></header>
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="game">Play</button>
+    <button class="tab-btn" data-tab="vocab">My Vocabulary</button>
+  </div>
+  <div id="tab-game" class="tab-panel active">
+    <div id="board"></div>
+    <div id="keyboard"></div>
+    <div id="result-panel">
+      <div id="result-message"></div>
+      <div id="result-word"></div>
+      <span id="result-ipa" class="result-ipa"></span>
+      <span id="result-phonetic" class="result-phonetic"></span>
+      <div id="result-example"></div>
+      <div class="result-actions">
+        <button class="btn btn-share"     id="btn-share">↗ Share</button>
+        <button class="btn btn-secondary" id="btn-vocab">My Vocabulary</button>
+        <button class="btn btn-primary"   id="btn-new">New Word</button>
+      </div>
+    </div>
+  </div>
+  <div id="tab-vocab" class="tab-panel">
+    <div class="vocab-header">
+      <h2>My Vocabulary</h2>
+      <button class="btn-danger" id="btn-clear">Clear All</button>
+    </div>
+    <div id="vocab-list"></div>
+  </div>
+  <script>
+  const WORDS = [
+    {word:'ABHOR', ipa:'/æbˈhɔːr/', phonetic:'ab-HOR', example:'She began to abhor the long commute after months of delays.'},
+    {word:'BLEAK', ipa:'/bliːk/', phonetic:'BLEEK', example:'The forecast painted a bleak picture for the harvest season.'},
+    {word:'CRIMP', ipa:'/krɪmp/', phonetic:'KRIMP', example:'The new policy put a crimp in the team’s expansion plans.'},
+    {word:'DROLL', ipa:'/droʊl/', phonetic:'DROLE', example:'His droll humor kept the audience chuckling throughout the lecture.'},
+    {word:'FETID', ipa:'/ˈfɛtɪd/', phonetic:'FET-id', example:'A fetid smell rose from the stagnant water near the dock.'},
+    {word:'GAUNT', ipa:'/ɡɔːnt/', phonetic:'GAWNT', example:'After weeks of illness, his gaunt face alarmed his friends.'},
+    {word:'HAVOC', ipa:'/ˈhævək/', phonetic:'HAV-uk', example:'The storm wreaked havoc on the coastal town overnight.'},
+    {word:'JADED', ipa:'/ˈdʒeɪdɪd/', phonetic:'JAY-did', example:'After ten years in the industry, she felt jaded by endless meetings.'},
+    {word:'KNAVE', ipa:'/neɪv/', phonetic:'NAYV', example:'The knave stole the queen’s tarts and fled the palace gates.'},
+    {word:'LUCID', ipa:'/ˈluːsɪd/', phonetic:'LOO-sid', example:'Despite the late hour, his argument remained lucid and well-structured.'},
+    {word:'MIRTH', ipa:'/mɜːrθ/', phonetic:'MURTH', example:'The comedian’s wit filled the room with genuine mirth.'},
+    {word:'NEXUS', ipa:'/ˈnɛksəs/', phonetic:'NEK-sus', example:'The city became the nexus of trade and culture in the region.'},
+    {word:'PIQUE', ipa:'/piːk/', phonetic:'PEEK', example:'The unusual title was enough to pique her curiosity immediately.'},
+    {word:'QUALM', ipa:'/kwɑːm/', phonetic:'KWAHM', example:'He felt not a single qualm about his decision to resign.'},
+    {word:'RIVET', ipa:'/ˈrɪvɪt/', phonetic:'RIV-it', example:'The documentary’s opening scene was enough to rivet every viewer.'},
+    {word:'STOIC', ipa:'/ˈstoʊɪk/', phonetic:'STOH-ik', example:'She bore the loss with stoic composure that impressed everyone around her.'},
+    {word:'TERSE', ipa:'/tɜːrs/', phonetic:'TURS', example:'His terse reply made it clear the conversation was over.'},
+    {word:'UMBRA', ipa:'/ˈʊmbrə/', phonetic:'UM-bra', example:'Totality began the moment the moon’s umbra swept across the valley.'},
+    {word:'VAPID', ipa:'/ˈvæpɪd/', phonetic:'VAP-id', example:'The vapid celebrity interview offered nothing of real substance.'},
+    {word:'WREST', ipa:'/rɛst/', phonetic:'REST', example:'She had to wrest control of the project from a resistant committee.'},
+    {word:'AXIOM', ipa:'/ˈæksiəm/', phonetic:'AK-see-um', example:'It is an axiom of good design that simplicity beats complexity.'},
+    {word:'BRASH', ipa:'/bræʃ/', phonetic:'BRASH', example:'His brash confidence alienated colleagues who valued humility.'},
+    {word:'CHASM', ipa:'/ˈkæzəm/', phonetic:'KAZ-um', example:'A chasm opened between the two factions after the failed vote.'},
+    {word:'DIRGE', ipa:'/dɜːrdʒ/', phonetic:'DURJ', example:'The violins played a mournful dirge at the close of the ceremony.'},
+    {word:'ELUDE', ipa:'/ɪˈluːd/', phonetic:'ih-LOOD', example:'The answer continued to elude her despite hours of careful research.'},
+    {word:'FEIGN', ipa:'/feɪn/', phonetic:'FAYN', example:'He chose to feign ignorance rather than admit he had read the memo.'},
+    {word:'GUILE', ipa:'/ɡaɪl/', phonetic:'GYL', example:'The negotiator used guile rather than force to win the contract.'},
+    {word:'HARDY', ipa:'/ˈhɑːrdi/', phonetic:'HAR-dee', example:'Only the most hardy plants can survive a frost without any shelter.'},
+    {word:'INERT', ipa:'/ɪˈnɜːrt/', phonetic:'ih-NURT', example:'The catalyst remained inert until the temperature exceeded 200 degrees.'},
+    {word:'JOUST', ipa:'/dʒaʊst/', phonetic:'JOWST', example:'Knights would joust at tournaments to prove their valor and courage.'},
+    {word:'KNELL', ipa:'/nɛl/', phonetic:'NEL', example:'The factory closure sounded the death knell for the entire town.'},
+    {word:'LEERY', ipa:'/ˈlɪri/', phonetic:'LEER-ee', example:'After the scam, she was leery of any unsolicited financial advice.'},
+    {word:'MAXIM', ipa:'/ˈmæksɪm/', phonetic:'MAK-sim', example:'Her guiding maxim was simple: measure twice, cut once.'},
+    {word:'NICHE', ipa:'/niːʃ/', phonetic:'NEESH', example:'The bookshop carved out a niche selling rare first editions only.'},
+    {word:'OPINE', ipa:'/oʊˈpaɪn/', phonetic:'oh-PYN', example:'The columnist was never shy to opine on matters of public policy.'},
+    {word:'QUELL', ipa:'/kwɛl/', phonetic:'KWEL', example:'The manager worked quickly to quell rumors spreading through the office.'},
+    {word:'SCANT', ipa:'/skænt/', phonetic:'SKANT', example:'There was scant evidence to support the prosecution’s entire case.'},
+    {word:'TAWNY', ipa:'/ˈtɔːni/', phonetic:'TAW-nee', example:'The lion’s tawny coat blended perfectly with the dry savanna grass.'},
+    {word:'UNDUE', ipa:'/ʌnˈdjuː/', phonetic:'un-DYOO', example:'The auditors found undue pressure had been placed on junior staff.'},
+    {word:'VEXED', ipa:'/vɛkst/', phonetic:'VEKST', example:'She was vexed by the repeated interruptions during her presentation.'},
+    {word:'WRATH', ipa:'/ræθ/', phonetic:'RATH', example:'The CEO’s wrath fell on the team that missed the product deadline.'},
+    {word:'YEARN', ipa:'/jɜːrn/', phonetic:'YURN', example:'After a decade abroad, he began to yearn for the familiar streets of home.'},
+    {word:'ZESTY', ipa:'/ˈzɛsti/', phonetic:'ZES-tee', example:'The chef added a zesty lime dressing that transformed the entire salad.'},
+    {word:'AGILE', ipa:'/ˈædʒaɪl/', phonetic:'AJ-ile', example:'The agile startup outmaneuvered its slower rivals at every turn.'},
+    {word:'BANAL', ipa:'/bəˈnɑːl/', phonetic:'buh-NAHL', example:'His speech was full of banal phrases that added nothing to the debate.'},
+    {word:'CANNY', ipa:'/ˈkæni/', phonetic:'KAN-ee', example:'A canny investor, she bought shares before the merger was announced.'},
+    {word:'DAUNT', ipa:'/dɔːnt/', phonetic:'DAWNT', example:'The sheer scale of the project was enough to daunt even experienced engineers.'},
+    {word:'EMBER', ipa:'/ˈɛmbər/', phonetic:'EM-bur', example:'A single ember from the campfire ignited the dry leaves nearby.'},
+    {word:'FLAIR', ipa:'/flɛr/', phonetic:'FLAIR', example:'She decorated the room with a natural flair that drew many compliments.'},
+    {word:'GLEAN', ipa:'/ɡliːn/', phonetic:'GLEEN', example:'From scattered reports, investigators tried to glean the full sequence of events.'},
+    {word:'HOARD', ipa:'/hɔːrd/', phonetic:'HORD', example:'Archaeologists discovered a hoard of silver coins beneath the floorboards.'},
+    {word:'INANE', ipa:'/ɪˈneɪn/', phonetic:'ih-NAYN', example:'The meeting dissolved into inane chatter that wasted everyone’s afternoon.'},
+    {word:'JAUNT', ipa:'/dʒɔːnt/', phonetic:'JAWNT', example:'They took a quick jaunt to the coast before the weather turned cold.'},
+    {word:'KNACK', ipa:'/næk/', phonetic:'NAK', example:'She had a knack for diffusing tense situations with a well-placed joke.'},
+    {word:'LITHE', ipa:'/laɪð/', phonetic:'LYTH', example:'The gymnast moved with lithe precision across the balance beam.'},
+    {word:'MURKY', ipa:'/ˈmɜːrki/', phonetic:'MUR-kee', example:'The murky water of the canal hid whatever lurked beneath the surface.'},
+    {word:'ODIUM', ipa:'/ˈoʊdiəm/', phonetic:'OH-dee-um', example:'His betrayal earned him the odium of everyone who had once trusted him.'},
+    {word:'PLUMB', ipa:'/plʌm/', phonetic:'PLUM', example:'The poet spent her career trying to plumb the depths of grief and loss.'},
+    {word:'SAVOR', ipa:'/ˈseɪvər/', phonetic:'SAY-vur', example:'He learned to savor quiet mornings before the rest of the household woke.'},
+    {word:'TACIT', ipa:'/ˈtæsɪt/', phonetic:'TAS-it', example:'There was a tacit understanding that certain topics were off-limits between them.'},
+    {word:'USURP', ipa:'/juːˈzɜːrp/', phonetic:'yoo-ZURP', example:'The general attempted to usurp the presidency through a midnight coup.'},
+    {word:'VERVE', ipa:'/vɜːrv/', phonetic:'VURV', example:'She attacked the new project with the verve of someone half her age.'},
+    {word:'EXTOL', ipa:'/ɪkˈstoʊl/', phonetic:'ik-STOLE', example:'The review went on to extol the chef’s mastery of regional spices.'},
+    {word:'BROOD', ipa:'/bruːd/', phonetic:'BROOD', example:'He tended to brood for days after any criticism, however minor it was.'},
+    {word:'CLEFT', ipa:'/klɛft/', phonetic:'KLEFT', example:'Water had worn a deep cleft into the limestone over many centuries.'},
+    {word:'FLOUT', ipa:'/flaʊt/', phonetic:'FLOWT', example:'The contractor chose to flout the safety regulations, with costly results.'},
+    {word:'GRUFF', ipa:'/ɡrʌf/', phonetic:'GRUF', example:'Behind his gruff exterior was a man of considerable warmth and generosity.'},
+    {word:'IMPEL', ipa:'/ɪmˈpɛl/', phonetic:'im-PEL', example:'A sense of duty impelled her to report everything she had witnessed.'},
+    {word:'LIBEL', ipa:'/ˈlaɪbəl/', phonetic:'LY-bul', example:'The newspaper retracted the story after facing a serious libel lawsuit.'},
+    {word:'MOURN', ipa:'/mɔːrn/', phonetic:'MORN', example:'The whole village gathered to mourn the loss of their beloved teacher.'},
+    {word:'PARSE', ipa:'/pɑːrs/', phonetic:'PARS', example:'The analyst had to parse thousands of lines of financial data manually.'},
+    {word:'REBUT', ipa:'/rɪˈbʌt/', phonetic:'ree-BUT', example:'The scientist published a formal paper to rebut the contested findings.'},
+    {word:'TRYST', ipa:'/trɪst/', phonetic:'TRIST', example:'They arranged a secret tryst in the garden after the last guest had left.'},
+    {word:'VOUCH', ipa:'/vaʊtʃ/', phonetic:'VOWCH', example:'She was happy to vouch for his integrity to absolutely anyone who asked.'},
+    {word:'WIELD', ipa:'/wiːld/', phonetic:'WEELD', example:'He had learned to wield influence through patience rather than loud demands.'},
+    {word:'EXPEL', ipa:'/ɪkˈspɛl/', phonetic:'ik-SPEL', example:'The school board voted to expel the student after the third incident.'},
+    {word:'FIEND', ipa:'/fiːnd/', phonetic:'FEEND', example:'She was an absolute fiend for crossword puzzles on lazy Sunday mornings.'},
+    {word:'GRAFT', ipa:'/ɡrɑːft/', phonetic:'GRAFT', example:'The investigation exposed decades of graft in the city’s housing department.'},
+    {word:'INEPT', ipa:'/ɪˈnɛpt/', phonetic:'ih-NEPT', example:'The inept handling of the crisis severely damaged the company’s reputation.'},
+    {word:'LOFTY', ipa:'/ˈlɔːfti/', phonetic:'LAWF-tee', example:'Her lofty ambitions inspired the entire team to reach for more.'},
+    {word:'SWOON', ipa:'/swuːn/', phonetic:'SWOON', example:'Critics were quick to swoon over the debut novel’s lyrical, vivid prose.'},
+    {word:'TARDY', ipa:'/ˈtɑːrdi/', phonetic:'TAR-dee', example:'A tardy response to the complaint only made the frustrated customer angrier.'},
+    {word:'TIMID', ipa:'/ˈtɪmɪd/', phonetic:'TIM-id', example:'The timid proposal failed to impress a board hungry for bold, fresh ideas.'},
+    {word:'TROVE', ipa:'/troʊv/', phonetic:'TROVE', example:'The archive turned out to be a trove of previously unpublished correspondence.'},
+    {word:'VITAL', ipa:'/ˈvaɪtəl/', phonetic:'VY-tul', example:'Maintaining trust is vital to any meaningful long-term business relationship.'},
+    {word:'GRIPE', ipa:'/ɡraɪp/', phonetic:'GRYP', example:'His constant gripe about the commute grew tiresome after the very first week.'},
+    {word:'STOMP', ipa:'/stɒmp/', phonetic:'STOMP', example:'She heard him stomp across the wooden floor above and winced each time.'},
+    {word:'RASPY', ipa:'/ˈræspi/', phonetic:'RAS-pee', example:'His raspy voice after the concert suggested he had been singing for hours.'},
+    {word:'TAUNT', ipa:'/tɔːnt/', phonetic:'TAWNT', example:'The rival team tried to taunt the goalkeeper before the penalty kick.'},
+    {word:'SMITE', ipa:'/smaɪt/', phonetic:'SMYT', example:'In the myth, the god threatened to smite anyone who dared to cross him.'},
+    {word:'SCOFF', ipa:'/skɒf/', phonetic:'SKOF', example:'She did not scoff at the idea; she simply asked for more evidence first.'},
+    {word:'QUIRK', ipa:'/kwɜrk/', phonetic:'KWURK', example:'His endearing quirk was leaving tiny notes of encouragement on colleagues’ desks.'},
+    {word:'PLUCK', ipa:'/plʌk/', phonetic:'PLUK', example:'It took real pluck to stand up and challenge the committee’s official decision.'},
+    {word:'BLUNT', ipa:'/blʌnt/', phonetic:'BLUNT', example:'Her blunt feedback, though hard to hear, was exactly what the team needed.'}
+  ];
+
+  const SV = 'zordle_vocab', SS = 'zordle_state';
+  const MAX = 6, LEN = 5;
+  const PRI = {correct:3, present:2, absent:1, unused:0};
+  let target, guesses=[], current='', over=false, keyStates={}, shareGrid=[];
+
+  function rnd(ex){ const p=ex?WORDS.filter(w=>w.word!==ex):WORDS; return p[Math.floor(Math.random()*p.length)]; }
+
+  function evaluate(guess,ans){
+    const r=Array(LEN).fill('absent'), a=ans.split(''), g=guess.split('');
+    g.forEach((l,i)=>{ if(l===a[i]){r[i]='correct';a[i]=null;g[i]=null;} });
+    g.forEach((l,i)=>{ if(!l)return; const j=a.indexOf(l); if(j!==-1){r[i]='present';a[j]=null;} });
+    return r;
+  }
+
+  function tile(r,c){ return document.getElementById('tile-'+r+'-'+c); }
+
+  function buildBoard(){
+    const b=document.getElementById('board'); b.innerHTML='';
+    for(let r=0;r<MAX;r++){
+      const row=document.createElement('div'); row.className='row'; row.id='row-'+r;
+      for(let c=0;c<LEN;c++){
+        const t=document.createElement('div'); t.className='tile'; t.id='tile-'+r+'-'+c;
+        t.style.setProperty('--col',c); row.appendChild(t);
+      }
+      b.appendChild(row);
+    }
+  }
+
+  function clearBoard(){
+    for(let r=0;r<MAX;r++) for(let c=0;c<LEN;c++){
+      const t=tile(r,c); t.textContent=''; delete t.dataset.letter; delete t.dataset.state;
+    }
+  }
+
+  function buildKB(){
+    const rows=[['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['ENTER','Z','X','C','V','B','N','M','⌫']];
+    const kb=document.getElementById('keyboard'); kb.innerHTML='';
+    rows.forEach(letters=>{
+      const row=document.createElement('div'); row.className='kb-row';
+      letters.forEach(l=>{
+        const btn=document.createElement('button');
+        btn.className='key'+(l.length>1?' wide':''); btn.textContent=l;
+        if(l!=='ENTER'&&l!=='⌫') btn.dataset.key=l;
+        row.appendChild(btn);
+      });
+      kb.appendChild(row);
+    });
+  }
+
+  function syncKB(){
+    document.querySelectorAll('.key[data-key]').forEach(k=>{
+      const s=keyStates[k.dataset.key]; if(s) k.dataset.state=s; else delete k.dataset.state;
+    });
+  }
+
+  function updKeys(guess,states){
+    guess.split('').forEach((l,i)=>{
+      const c=keyStates[l]||'unused'; if(PRI[states[i]]>PRI[c]) keyStates[l]=states[i];
+    });
+  }
+
+  function addLetter(l){
+    if(over||current.length>=LEN) return;
+    current+=l; const t=tile(guesses.length,current.length-1);
+    t.textContent=l; t.dataset.letter=l;
+    t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop');
+  }
+
+  function delLetter(){
+    if(over||!current.length) return;
+    const t=tile(guesses.length,current.length-1);
+    t.textContent=''; delete t.dataset.letter; current=current.slice(0,-1);
+  }
+
+  function submit(){
+    if(over) return;
+    if(current.length!==LEN){ shake(guesses.length); toast('Not enough letters'); return; }
+    const states=evaluate(current,target.word), row=guesses.length, guess=current;
+    states.forEach((st,col)=>{
+      const t=tile(row,col);
+      setTimeout(()=>{ t.dataset.state=st; }, col*150+250);
+      t.classList.remove('flip'); void t.offsetWidth; t.classList.add('flip');
+    });
+    guesses.push(guess); current=''; updKeys(guess,states);
+    shareGrid.push(states.map(s=>s==='correct'?'🟩':s==='present'?'🟨':'⬜').join(''));
+    setTimeout(()=>{
+      syncKB(); saveState();
+      if(guess===target.word){ over=true; bounce(row); setTimeout(showResult,500); }
+      else if(guesses.length>=MAX){ over=true; setTimeout(showResult,300); }
+    }, (LEN-1)*150+600);
+  }
+
+  function shake(r){ const row=document.getElementById('row-'+r); row.classList.remove('shake'); void row.offsetWidth; row.classList.add('shake'); }
+  function bounce(r){ for(let c=0;c<LEN;c++){ const t=tile(r,c); t.classList.remove('bounce'); void t.offsetWidth; t.classList.add('bounce'); } }
+
+  let tt;
+  function toast(msg,ms=1600){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>el.classList.remove('show'),ms); }
+
+  function showResult(){
+    const won=guesses[guesses.length-1]===target.word;
+    const msgs=['Genius!','Magnificent!','Impressive!','Splendid!','Great!','Phew!'];
+    document.getElementById('result-message').textContent = won ? msgs[Math.min(guesses.length-1,5)] : 'The word was';
+    document.getElementById('result-word').textContent    = target.word;
+    document.getElementById('result-ipa').textContent     = target.ipa;
+    document.getElementById('result-phonetic').textContent= target.phonetic;
+    document.getElementById('result-example').textContent = '“'+target.example+'”';
+    document.getElementById('result-panel').classList.add('show');
+    saveVocab(target);
+  }
+
+  function shareText(){
+    const won=guesses[guesses.length-1]===target.word;
+    return ['Zordle '+(won?guesses.length:'X')+'/'+MAX,'', ...shareGrid].join('
+');
+  }
+
+  document.getElementById('btn-share').addEventListener('click',()=>{
+    const txt=shareText();
+    if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>toast('Copied!')); }
+    else { const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast('Copied!'); }
+  });
+  document.getElementById('btn-new').addEventListener('click', newGame);
+  document.getElementById('btn-vocab').addEventListener('click', ()=>switchTab('vocab'));
+
+  function saveVocab(e){
+    const v=JSON.parse(localStorage.getItem(SV)||'[]');
+    if(!v.some(x=>x.word===e.word)){ v.push({...e,learnedOn:new Date().toISOString()}); localStorage.setItem(SV,JSON.stringify(v)); }
+  }
+
+  function renderVocab(){
+    const v=JSON.parse(localStorage.getItem(SV)||'[]');
+    const el=document.getElementById('vocab-list');
+    if(!v.length){ el.innerHTML='<p class="empty-state">Complete a puzzle to start building your vocabulary.<br>Words appear here after each game.</p>'; return; }
+    el.innerHTML=v.slice().reverse().map(e=>
+      '<div class="flashcard">'+
+        '<div class="fc-word">'+e.word+'</div>'+
+        '<div class="fc-pron"><span class="fc-ipa">'+e.ipa+'</span><span class="fc-phonetic">'+e.phonetic+'</span></div>'+
+        '<div class="fc-example">“'+e.example+'”</div>'+
+        '<div class="fc-date">Learned '+new Date(e.learnedOn).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"})+'</div>'+
+      '</div>'
+    ).join('');
+  }
+
+  document.getElementById('btn-clear').addEventListener('click',()=>{
+    if(confirm('Clear your entire vocabulary? This cannot be undone.')){ localStorage.removeItem(SV); renderVocab(); toast('Vocabulary cleared'); }
+  });
+
+  function saveState(){
+    const won=guesses.length&&guesses[guesses.length-1]===target.word;
+    localStorage.setItem(SS,JSON.stringify({word:target.word,guesses,status:won?'won':guesses.length>=MAX?'lost':'playing'}));
+  }
+
+  function loadGame(){
+    const raw=localStorage.getItem(SS);
+    if(raw){
+      try{
+        const s=JSON.parse(raw), entry=WORDS.find(w=>w.word===s.word);
+        if(entry){
+          target=entry; guesses=s.guesses||[];
+          guesses.forEach((g,row)=>{
+            const states=evaluate(g,target.word);
+            states.forEach((st,col)=>{ const t=tile(row,col); t.textContent=g[col]; t.dataset.letter=g[col]; t.dataset.state=st; });
+            updKeys(g,states);
+          });
+          shareGrid=guesses.map(g=>evaluate(g,target.word).map(s=>s==='correct'?'🟩':s==='present'?'🟨':'⬜').join(''));
+          syncKB();
+          if(s.status!=='playing'){ over=true; showResult(); return; }
+          return;
+        }
+      }catch(e){}
+    }
+    target=rnd(); guesses=[]; saveState();
+  }
+
+  function newGame(){
+    const prev=target?target.word:null;
+    target=rnd(prev); guesses=[]; current=''; over=false; keyStates={}; shareGrid=[];
+    clearBoard(); syncKB(); document.getElementById('result-panel').classList.remove('show');
+    saveState();
+  }
+
+  function switchTab(name){
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+name));
+    if(name==='vocab') renderVocab();
+  }
+
+  document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+  document.getElementById('keyboard').addEventListener('click',e=>{
+    const b=e.target.closest('.key'); if(!b) return;
+    const l=b.textContent;
+    if(l==='ENTER') submit(); else if(l==='⌫') delLetter(); else addLetter(l);
+  });
+  document.addEventListener('keydown',e=>{
+    if(e.ctrlKey||e.metaKey||e.altKey) return;
+    if(!document.querySelector('#tab-game.active')) return;
+    if(e.key==='Enter') submit();
+    else if(e.key==='Backspace') delLetter();
+    else if(/^[a-zA-Z]$/.test(e.key)) addLetter(e.key.toUpperCase());
+  });
+
+  buildBoard(); buildKB(); loadGame();
+  </script>
+</body>
+</html>
